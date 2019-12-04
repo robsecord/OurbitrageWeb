@@ -5,6 +5,7 @@ import util from 'util';
 import { _ } from 'lodash';
 
 const logFile = fs.createWriteStream('../ourbitrage_logs.txt', {flags: 'a'}); // Or 'w' to truncate the file every time the process starts.
+const errorFile = fs.createWriteStream('../ourbitrage_errors.txt', {flags: 'a'}); // Or 'w' to truncate the file every time the process starts.
 const logStdout = process.stdout;
 
 const LOG_LEVEL_VERBOSE = 1;    // Writes to stdout
@@ -89,4 +90,14 @@ console.log = (...args) => {
         logStdout.write(util.format.apply(null, args) + '\n');
     }
 };
-console.info = console.warn = console.error = console.log;
+console.info = console.log;
+
+console.error = (...args) => {
+    if (log.level > LOG_LEVEL_VERBOSE) {
+        errorFile.write(util.format.apply(null, args) + '\n');
+    }
+    if (log.level < LOG_LEVEL_PRD) {
+        logStdout.write(util.format.apply(null, args) + '\n');
+    }
+};
+console.warn = console.error;
