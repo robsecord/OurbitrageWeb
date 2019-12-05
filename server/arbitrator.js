@@ -4,6 +4,7 @@ import getJSON from 'get-json';
 
 // App Components
 import { notify } from './notifier';
+import { Helpers } from './helpers';
 import { ARB_GLOBAL } from './globals';
 import { logC } from './logging';
 const log = logC.init('ARBITRATOR');
@@ -142,11 +143,19 @@ export class Arbitrator {
                 if (buyAt > sellAt + ARB_GLOBAL.MIN_PROFIT_PER_ARB) {
                     // No Arb-Op
                     log.debug(`    - No Arbitration Opportunity.`);
+                    if (!Helpers.isDev()) {
+                        log.info(`       [A: No] [D: ${diff}] [B: ${buyAt}] [S: ${sellAt}] [GP: ${this.gasPrice}] [GC: ${gasCost}] [M: ${method}]`);
+                    }
                     log.verbose('  ');
                     return resolve({method, profit: 0, loss: 0, executed: false, failing: false});
                 }
 
                 // Arb-Op!
+                log.verbose(`+++++++ Arbitration Opportunity!`);
+                if (!Helpers.isDev()) {
+                    log.info(`       [A: Yes] [D: ${diff}] [B: ${buyAt}] [S: ${sellAt}] [GC: ${gasCost}] [GP: ${this.gasPrice}]`);
+                }
+                log.verbose('  ');
                 const {profit, loss} = await this._performArbitration({method, fundingToken});
                 resolve({method, profit, loss, executed: true, failing: false});
             } catch (err) {
@@ -164,9 +173,6 @@ export class Arbitrator {
      * @private
      */
     async _performArbitration({method, fundingToken}) {
-        log.verbose(`+++++++ Arbitration Opportunity!`);
-        log.verbose('  ');
-
         const pendingTx = await this.ourbitrage.callContractFn(method, fundingToken);
         log.debug('pendingTx', JSON.stringify(pendingTx, null, '\t'));
         log.debug('  ');

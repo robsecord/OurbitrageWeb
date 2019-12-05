@@ -1,6 +1,10 @@
 // NPM Modules
 // import minimist from 'minimist';
 
+// Environment Settings
+import env from 'dotenv';
+env.config();
+
 // App Components
 import { Arbitrator } from './arbitrator';
 import { ContractFactory } from './contract-factory';
@@ -12,15 +16,14 @@ const log = logC.init('APP');
 // Contract
 import { OurbitrageABI } from './abi/ourbitrage.abi';
 
-// Environment Settings
-import env from 'dotenv';
-env.config();
 
 /**
  *
  * @returns {Promise<void>}
  */
 async function main() {
+    log.setLogLevel();
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     //
     // Script Preparation
@@ -35,9 +38,9 @@ async function main() {
     //
     // Contract Preparation
     //
-    const addressName = 'OURBITRAGE';
-    const contractAddress = ARB_GLOBAL.CONTRACT_ADDRESS[networkVersion][addressName];
-    const Ourbitrage = ContractFactory.create({addressName,  abi: OurbitrageABI});
+    const contractName = 'OURBITRAGE';
+    const contractAddress = process.env[contractName];
+    const Ourbitrage = ContractFactory.create({name: contractName, address: contractAddress, abi: OurbitrageABI});
     Ourbitrage.prepare({web3, networkVersion, logger: log.debug});
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

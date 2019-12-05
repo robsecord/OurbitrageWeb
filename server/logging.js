@@ -4,6 +4,9 @@ import fs from 'fs';
 import util from 'util';
 import { _ } from 'lodash';
 
+// App Components
+import { Helpers } from './helpers';
+
 const logFile = fs.createWriteStream('../ourbitrage_logs.txt', {flags: 'a'}); // Or 'w' to truncate the file every time the process starts.
 const errorFile = fs.createWriteStream('../ourbitrage_errors.txt', {flags: 'a'}); // Or 'w' to truncate the file every time the process starts.
 const logStdout = process.stdout;
@@ -13,6 +16,7 @@ const LOG_LEVEL_DEV = 2;        // Writes to stdout + file
 const LOG_LEVEL_PRD = 3;        // Writes to file
 
 const _ignoredComponents = [
+    // 'NOTIFIER',
 ];
 
 export class log {
@@ -65,21 +69,22 @@ export class logC {
             debug   : (msg, ...args) => log.debug(componentName, msg, ...args),
             info    : (msg, ...args) => log.info(componentName, msg, ...args),
             warn    : (msg, ...args) => log.warn(componentName, msg, ...args),
-            error   : (msg, ...args) => log.error(componentName, msg, ...args)
+            error   : (msg, ...args) => log.error(componentName, msg, ...args),
+            setLogLevel: () => {
+                if (!Helpers.isDev()) {
+                    log.level = LOG_LEVEL_PRD;
+                }
+
+            }
         };
     }
 }
 
 //
-//  SET LOGGING LEVEL
+//  SET DEFAULT LOGGING LEVEL
 //
 log.level = LOG_LEVEL_VERBOSE;
 
-
-// Enforce Logging Level on Prod
-if (process.env.NODE_ENV === 'production') {
-    log.level = LOG_LEVEL_PRD;
-}
 
 // Override Logs to Output to file
 console.log = (...args) => {

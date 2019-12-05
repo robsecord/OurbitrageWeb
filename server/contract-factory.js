@@ -13,13 +13,14 @@ export const ContractFactory = {
      * @param abi
      * @returns {{prepare: prepare, instance: (function(): *)}}
      */
-    create({addressName, abi}) {
+    create({name, address, abi}) {
         let _instance;
         let _utils;
 
         function _createInstance() {
             return Object.create(_.assignIn({}, ContractFactory.objInterface, {
-                contractAddressName: addressName,
+                contractName: name,
+                contractAddress: address,
                 contractAbi: abi,
                 contractReady: false,
                 contract: null,
@@ -46,7 +47,7 @@ export const ContractFactory = {
             instance: () => {
                 if (!_instance) {
                     if (!_utils) {
-                        throw new Error(`CryptoCards Contract Instance for "${addressName}" has not been prepared!`);
+                        throw new Error(`Contract Instance for "${address}" has not been prepared!`);
                     }
                     _instance = _createInstance();
                     _instance.connectToContract(_utils);
@@ -86,10 +87,9 @@ export const ContractFactory = {
          * @param web3
          * @param networkVersion
          */
-        connectToContract({web3, networkVersion}) {
-            const address = ARB_GLOBAL.CONTRACT_ADDRESS[networkVersion][this.contractAddressName];
+        connectToContract({web3}) {
             this.web3 = web3;
-            this.contract = new this.web3.eth.Contract(this.contractAbi, address);
+            this.contract = new this.web3.eth.Contract(this.contractAbi, this.contractAddress);
             this.contractReady = (this.contract instanceof this.web3.eth.Contract);
         },
 
@@ -120,7 +120,7 @@ export const ContractFactory = {
          */
         estimateGas(contractMethod, tx, ...args) {
             if (!this.contractReady) {
-                return Promise.reject(`Web3 Provider not ready (calling "${this.contractAddressName}.${contractMethod}.estimateGas")`);
+                return Promise.reject(`Web3 Provider not ready (calling "${this.contractName}.${contractMethod}.estimateGas")`);
             }
             return this.contract.methods[contractMethod](...args).estimateGas(tx);
         },
@@ -133,7 +133,7 @@ export const ContractFactory = {
          */
         callContractFn(contractMethod, ...args) {
             if (!this.contractReady) {
-                return Promise.reject(`Web3 Provider not ready (calling "${this.contractAddressName}.${contractMethod}.call")`);
+                return Promise.reject(`Web3 Provider not ready (calling "${this.contractName}.${contractMethod}.call")`);
             }
             return this.contract.methods[contractMethod](...args).call();
         },
@@ -147,7 +147,7 @@ export const ContractFactory = {
          */
         tryContractTx(contractMethod, tx, ...args) {
             if (!this.contractReady) {
-                return Promise.reject(`Web3 Provider not ready (calling "${this.contractAddressName}.${contractMethod}.send")`);
+                return Promise.reject(`Web3 Provider not ready (calling "${this.contractName}.${contractMethod}.send")`);
             }
             return this.contract.methods[contractMethod](...args).send(tx);
         },
