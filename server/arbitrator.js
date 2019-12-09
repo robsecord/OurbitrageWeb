@@ -83,21 +83,21 @@ export class Arbitrator {
         log.debug(`Using Gas Price: ${this.gasPrice / 1e9} GWEI`);
         log.verbose('  ');
 
-        // Attempt Arbitration
+        // Check for Arbitration Opportunities
         const requests = _.map(_arbitrationPairs, (arbData) => this._checkPriceArbitration(arbData));
         const results = await Promise.all(requests);
 
-        // TODO: Store all results in DB for analytics
-
-        // Check for Executed Arbitrations
-        if (!_.isUndefined(_.find(results, 'executed'))) {
+        // Perform Arbitration
+        const opportunities = _.compact(_.map(results, opp => {
+            if (opp.potentialGain > 0) {
+                return opp;
+            }
+        }));
+        if (!_.isEmpty(opportunities)) {
+            const {method, fundingToken, profit, loss} = await this._performArbitration({opportunities});
             log.info('  ');
             log.info('Arbitration Results:');
-            _.forEach(results, res => {
-                if (res.executed && !res.failing) {
-                    log.info(`  ${res.method} -> Profit: ${res.profit}  |  Loss: ${res.loss}`);
-                }
-            });
+            log.info(`  [${method}] Funding Token: ${fundingToken} | Profit: ${profit} | Loss: ${loss}`);
         }
         log.verbose('-----');
         log.debug('  ');
@@ -114,12 +114,13 @@ export class Arbitrator {
      */
     _checkPriceArbitration({method, pairs, fundingToken, estimatedGas}) {
         return new Promise(async (resolve) => {
+            const result = {method, fundingToken, potentialGain: 0, failing: true};
             try {
                 const gasCost = _.round(estimatedGas.gas * this.gasPrice);
 
                 if (estimatedGas.failing) {
                     log.error(`  ${method}  - Failed GAS Estimation!`);
-                    return resolve({method, profit: 0, loss: 0, executed: false, failing: true});
+                    return resolve(result);
                 }
 
                 const requests = _.map(pairs, (pricingReq) => this._getPriceWrapper(pricingReq));
@@ -140,14 +141,15 @@ export class Arbitrator {
                 log.verbose(`        sell: ${sellAtEth} ETH`);
                 log.verbose(`        diff: ${diffEth} ETH  (min: ${ARB_GLOBAL.MIN_PROFIT_PER_ARB} WEI)`);
 
-                if (buyAt > sellAt + ARB_GLOBAL.MIN_PROFIT_PER_ARB) {
+                if (diff < ARB_GLOBAL.MIN_PROFIT_PER_ARB) {
                     // No Arb-Op
                     log.debug(`    - No Arbitration Opportunity.`);
                     if (!Helpers.isDev()) {
                         log.info(`       [A: No] [D: ${diff}] [B: ${buyAt}] [S: ${sellAt}] [GP: ${this.gasPrice}] [GC: ${gasCost}] [M: ${method}]`);
                     }
                     log.verbose('  ');
-                    return resolve({method, profit: 0, loss: 0, executed: false, failing: false});
+                    result.failing = false;
+                    return resolve(result);
                 }
 
                 // Arb-Op!
@@ -156,11 +158,16 @@ export class Arbitrator {
                     log.info(`       [A: Yes] [D: ${diff}] [B: ${buyAt}] [S: ${sellAt}] [GC: ${gasCost}] [GP: ${this.gasPrice}]`);
                 }
                 log.verbose('  ');
-                const {profit, loss} = await this._performArbitration({method, fundingToken});
-                resolve({method, profit, loss, executed: true, failing: false});
+
+                result.potentialGain = diff;
+                result.buyAt = buyAt;
+                result.sellAt = sellAt;
+                result.gasCost = gasCost;
+                result.failing = false;
+                resolve(result);
             } catch (err) {
                 log.error(`    - Failed Tx; Reason: ${err}`);
-                resolve({method, profit: 0, loss: 0, executed: false, failing: true});
+                resolve(result);
             }
         });
     }
@@ -172,7 +179,13 @@ export class Arbitrator {
      * @returns {Promise<{loss: number, profit: number}>}
      * @private
      */
-    async _performArbitration({method, fundingToken}) {
+    async _performArbitration({opportunities}) {
+        // Determine Best Opportunity
+        const bestGain = Helpers.getLargestByField(opportunities, 'potentialGain');
+        const bestOpp = _.find(opportunities, {potentialGain: bestGain});
+        const { method, fundingToken } = bestOpp;
+
+        // Perform Arbitration
         const pendingTx = await this.ourbitrage.callContractFn(method, fundingToken);
         log.debug('pendingTx', JSON.stringify(pendingTx, null, '\t'));
         log.debug('  ');
@@ -181,13 +194,14 @@ export class Arbitrator {
         log.debug('txReceipt', JSON.stringify(txReceipt, null, '\t'));
         log.debug('  ');
 
+        // TODO: Determine Profit/Loss
         let profit = 0;
         let loss = 0;
 
-        // TODO: Determine Profit/Loss
-
-        notify({method, fundingToken, profit, loss});
-        return {profit, loss};
+        // Return Results of Arbitration
+        const result = {method, fundingToken, profit, loss};
+        notify(result);
+        return result;
     }
 
     /**

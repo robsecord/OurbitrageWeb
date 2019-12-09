@@ -51,3 +51,13 @@ Helpers.delay = (time) => {
         setTimeout(resolve, time);
     });
 };
+
+Helpers.getLargestByField = (items, field) => {
+    let largest = items[0][field];
+    for (let i = 1; i < items.length; i++) {
+        if (items[i][field] > largest) {
+            largest = items[i][field];
+        }
+    }
+    return largest;
+};
