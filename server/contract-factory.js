@@ -142,14 +142,37 @@ export const ContractFactory = {
          *
          * @param contractMethod
          * @param tx
+         * @param pk
          * @param args
          * @returns {boolean | void|*}
          */
-        tryContractTx(contractMethod, tx, ...args) {
+        tryContractTx(contractMethod, pk, tx, ...args) {
             if (!this.contractReady) {
                 return Promise.reject(`Web3 Provider not ready (calling "${this.contractName}.${contractMethod}.send")`);
             }
-            return this.contract.methods[contractMethod](...args).send(tx);
+            return new Promise(async (resolve) => {
+                const chainId = await this.web3.eth.net.getId();
+                const account = await this.web3.eth.accounts.privateKeyToAccount(pk);
+                const nonce = await this.web3.eth.getTransactionCount(account.address);
+                const encoded = this.contract.methods[contractMethod](...args).encodeABI();
+
+                tx = {
+                    to       : this.contractAddress,
+                    from     : account.address,
+                    data     : encoded,
+                    nonce    : nonce,
+                    gasLimit : ARB_GLOBAL.MAX_TX_GAS_LIMIT,
+                    value    : 0,
+                    chainId  : chainId,
+                    ...(tx || {}),
+                };
+                console.log('tryContractTx', contractMethod, tx);
+
+                const signed = await this.web3.eth.accounts.signTransaction(tx, pk);
+                const receipt = await this.web3.eth.sendSignedTransaction(signed.rawTransaction);
+                    // .on('receipt', resolve);
+                resolve(receipt);
+            });
         },
 
         /**

@@ -53,9 +53,10 @@ export class Arbitrator {
      * @param owner
      * @param arbitrationPairs
      */
-    constructor({ourbitrage, owner}) {
+    constructor({ourbitrage, owner, privateKey}) {
         this.ourbitrage = ourbitrage;
         this.owner = owner;
+        this.privateKey = privateKey;
         this.gasPrice = 0;
     }
 
@@ -88,11 +89,7 @@ export class Arbitrator {
         const results = await Promise.all(requests);
 
         // Perform Arbitration
-        const opportunities = _.compact(_.map(results, opp => {
-            if (opp.potentialGain > 0) {
-                return opp;
-            }
-        }));
+        const opportunities = _.filter(results, opp => (opp.potentialGain > 0));
         if (!_.isEmpty(opportunities)) {
             const {method, fundingToken, profit, loss} = await this._performArbitration({opportunities});
             log.info('  ');
@@ -116,7 +113,7 @@ export class Arbitrator {
         return new Promise(async (resolve) => {
             const result = {method, fundingToken, potentialGain: 0, failing: true};
             try {
-                const gasCost = _.round(estimatedGas.gas * this.gasPrice);
+                const gasCostETH = _.round(estimatedGas.gas * this.gasPrice);
 
                 if (estimatedGas.failing) {
                     log.error(`  ${method}  - Failed GAS Estimation!`);
@@ -127,26 +124,25 @@ export class Arbitrator {
                 const pricing = await Promise.all(requests);
 
                 // Check for Arb-Op
-                const input = _.parseInt(pricing[0].rate, ARB_GLOBAL.NUM_BASE);
-                const output = _.parseInt(pricing[1].rate, ARB_GLOBAL.NUM_BASE);
-                const buyAt = input + gasCost;
-                const sellAt = output;
-                const diff = sellAt - buyAt;
-                const buyAtEth = buyAt / ARB_GLOBAL.ETHEREUM_UNIT;
-                const sellAtEth = sellAt / ARB_GLOBAL.ETHEREUM_UNIT;
-                const diffEth = diff / ARB_GLOBAL.ETHEREUM_UNIT;
+                const buyRateInFT = _.parseInt(pricing[0].rate, ARB_GLOBAL.NUM_BASE);
+                const sellRateInFT = _.parseInt(pricing[1].rate, ARB_GLOBAL.NUM_BASE);
+                const avgRateInFT = (buyRateInFT + sellRateInFT) / 2;
+                const gasCostInFT = avgRateInFT * (gasCostETH / ARB_GLOBAL.ETHEREUM_UNIT);
+                const potentialGain = sellRateInFT - (buyRateInFT + gasCostInFT);
 
-                log.debug(`    ${fundingToken} ${method} with Est. Gas Cost: ${gasCost} WEI`);
-                log.verbose(`        buy:  ${buyAtEth} ETH`);
-                log.verbose(`        sell: ${sellAtEth} ETH`);
-                log.verbose(`        diff: ${diffEth} ETH  (min: ${ARB_GLOBAL.MIN_PROFIT_PER_ARB} WEI)`);
+                const buyAtDisplay = buyRateInFT / ARB_GLOBAL.ETHEREUM_UNIT;
+                const sellAtDisplay = sellRateInFT / ARB_GLOBAL.ETHEREUM_UNIT;
+                const gainDisplay = potentialGain / ARB_GLOBAL.ETHEREUM_UNIT;
 
-                if (diff < ARB_GLOBAL.MIN_PROFIT_PER_ARB) {
+                log.debug(`    ${fundingToken} ${method} with Est. Gas (${estimatedGas.gas}) Cost: ${gasCostETH / ARB_GLOBAL.ETHEREUM_UNIT} ETH (${gasCostInFT / ARB_GLOBAL.ETHEREUM_UNIT} ${fundingToken})`);
+                log.verbose(`        buy:  ${buyAtDisplay} ${fundingToken}`);
+                log.verbose(`        sell: ${sellAtDisplay} ${fundingToken}`);
+                log.verbose(`        gain: ${gainDisplay} ${fundingToken}  (min: ${ARB_GLOBAL.MIN_PROFIT_PER_ARB})`);
+
+                if (potentialGain < ARB_GLOBAL.MIN_PROFIT_PER_ARB) {
                     // No Arb-Op
-                    log.debug(`    - No Arbitration Opportunity.`);
-                    if (!Helpers.isDev()) {
-                        log.info(`       [A: No] [D: ${diff}] [B: ${buyAt}] [S: ${sellAt}] [GP: ${this.gasPrice}] [GC: ${gasCost}] [M: ${method}]`);
-                    }
+                    log.verbose(`    - No Arbitration Opportunity.`);
+                    log.debug(`       [A: No] [${fundingToken}] [D: ${potentialGain}] [B: ${buyRateInFT}] [S: ${sellRateInFT}] [GC: ${gasCostInFT}] [M: ${method}]`);
                     log.verbose('  ');
                     result.failing = false;
                     return resolve(result);
@@ -154,15 +150,14 @@ export class Arbitrator {
 
                 // Arb-Op!
                 log.verbose(`+++++++ Arbitration Opportunity!`);
-                if (!Helpers.isDev()) {
-                    log.info(`       [A: Yes] [D: ${diff}] [B: ${buyAt}] [S: ${sellAt}] [GC: ${gasCost}] [GP: ${this.gasPrice}]`);
-                }
+                log.info(`       [A: Yes] [${fundingToken}] [D: ${potentialGain}] [B: ${buyRateInFT}] [S: ${sellRateInFT}] [GC: ${gasCostInFT}] [M: ${method}]`);
                 log.verbose('  ');
 
-                result.potentialGain = diff;
-                result.buyAt = buyAt;
-                result.sellAt = sellAt;
-                result.gasCost = gasCost;
+                result.potentialGain = potentialGain;
+                result.buyAt = buyRateInFT;
+                result.sellAt = sellRateInFT;
+                result.gasCostFT = gasCostInFT;
+                result.gasCostETH = gasCostETH;
                 result.failing = false;
                 resolve(result);
             } catch (err) {
@@ -174,8 +169,7 @@ export class Arbitrator {
 
     /**
      *
-     * @param method
-     * @param fundingToken
+     * @param opportunities
      * @returns {Promise<{loss: number, profit: number}>}
      * @private
      */
@@ -184,9 +178,11 @@ export class Arbitrator {
         const bestGain = Helpers.getLargestByField(opportunities, 'potentialGain');
         const bestOpp = _.find(opportunities, {potentialGain: bestGain});
         const { method, fundingToken } = bestOpp;
+        log.info(`Performing Arb "${method}" with ${fundingToken} for a potential gain of ${bestGain}`);
 
         // Perform Arbitration
-        const pendingTx = await this.ourbitrage.callContractFn(method, fundingToken);
+        const tx = {gas: ARB_GLOBAL.MAX_GAS_PER_ARB_GWEI};
+        const pendingTx = await this.ourbitrage.tryContractTx(method, this.privateKey, tx, fundingToken);
         log.debug('pendingTx', JSON.stringify(pendingTx, null, '\t'));
         log.debug('  ');
 

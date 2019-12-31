@@ -30,6 +30,7 @@ async function main() {
     //
     // const commandArgs = minimist(process.argv.slice(2), {alias: {f: 'fresh', c: 'clean'}});
     const owner = process.env.OWNER_PUBLIC_KEY;
+    const privateKey = process.env.OWNER_PRIVATE_KEY;
     const providerUrl = process.env.WEB3_PROVIDER_URL;
     const networkVersion = process.env.WEB3_NETWORK_VERSION;
     const { web3 } = await Helpers.initializeWeb3(providerUrl);
@@ -86,7 +87,7 @@ async function main() {
     // Script Execution Loop
     //   - will only exit if an error is thrown
     //
-    const arbitrator = new Arbitrator({ourbitrage, owner});
+    const arbitrator = new Arbitrator({ourbitrage, owner, privateKey});
     await arbitrator.prepare();
 
     let profilerResults;
