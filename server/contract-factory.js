@@ -150,7 +150,7 @@ export const ContractFactory = {
             if (!this.contractReady) {
                 return Promise.reject(`Web3 Provider not ready (calling "${this.contractName}.${contractMethod}.send")`);
             }
-            return new Promise(async (resolve) => {
+            return new Promise(async (resolve, reject) => {
                 const chainId = await this.web3.eth.net.getId();
                 const account = await this.web3.eth.accounts.privateKeyToAccount(pk);
                 const nonce = await this.web3.eth.getTransactionCount(account.address);
@@ -167,11 +167,26 @@ export const ContractFactory = {
                     ...(tx || {}),
                 };
                 console.log('tryContractTx', contractMethod, tx);
+                // tx = {
+                //     to       : '0xb9Fd169F2885E5e71d9aDb8E6e8505596feC339d',
+                //     from     : '0x6D8F642A757541408B0500E255C29F6bad66BF69',
+                //     data     : '0x76233833000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000035341490000000000000000000000000000000000000000000000000000000000',
+                //     nonce    : 92,
+                //     gasLimit : 500000,
+                //     value    : 0,
+                //     chainId  : 1,
+                //     gas      : 10000000000
+                // }
 
-                const signed = await this.web3.eth.accounts.signTransaction(tx, pk);
-                const receipt = await this.web3.eth.sendSignedTransaction(signed.rawTransaction);
+                try {
+                    const signed = await this.web3.eth.accounts.signTransaction(tx, pk);
+                    const receipt = await this.web3.eth.sendSignedTransaction(signed.rawTransaction);
                     // .on('receipt', resolve);
-                resolve(receipt);
+                    resolve(receipt);
+                }
+                catch (err) {
+                    reject(err);
+                }
             });
         },
 
