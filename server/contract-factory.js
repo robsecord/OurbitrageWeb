@@ -161,8 +161,8 @@ export const ContractFactory = {
                     from     : account.address,
                     data     : encoded,
                     nonce    : nonce,
-                    gasLimit : ARB_GLOBAL.MAX_TX_GAS_LIMIT,
-                    value    : 0,
+                    gas      : `${ARB_GLOBAL.MAX_TX_GAS_LIMIT}`,
+                    value    : '0',
                     chainId  : chainId,
                     ...(tx || {}),
                 };
